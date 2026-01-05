@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bodycam System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;700;900&display=swap');
+        
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            overflow: hidden;
+            background-color: transparent !important; /* Force transparent */
+        }
+
+        /* پس‌زمینه تستی فقط در مرورگر نمایش داده می‌شود و در بازی مخفی است */
+        .preview-bg {
+            background-image: url('https://images.unsplash.com/photo-1552084770-3f412959885e?q=80&w=2070&auto=format&fit=crop');
+            background-size: cover;
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            filter: blur(5px);
+            display: none; /* در حالت پروداکشن مخفی */
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.1);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b82f6;
+            border-radius: 3px;
+        }
+
+        .scanlines {
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.1) 50%,
+                rgba(0,0,0,0.1)
+            );
+            background-size: 100% 4px;
+            animation: scroll 10s linear infinite;
+        }
+
+        .rec-dot {
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex items-center justify-center select-none">
+    
+    <div class="preview-bg" id="preview-bg"></div>
+
+    <!-- MAIN MENU CONTAINER (Hidden by default) -->
+    <!-- Removed shadow-2xl to remove the dark glow outside the UI -->
+    <!-- Removed backdrop-blur-md to ensure clean edges -->
+    <!-- Changed bg-slate-900/95 to bg-slate-900 for solid look -->
+    <div id="bodycam-menu" style="display: none;" class="w-[500px] h-[600px] bg-slate-900 border border-slate-700 rounded-xl flex flex-col overflow-hidden transition-all duration-300 transform scale-100">
+        
+        <!-- Header -->
+        <div class="p-5 border-b border-slate-700 bg-slate-800 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                    <i class="fas fa-camera text-white text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-white font-bold text-xl">سیستم بادی‌کم</h1>
+                    <p class="text-slate-400 text-xs">واحد نظارت مرکزی</p>
+                </div>
+            </div>
+            <button onclick="closeMenu()" class="text-slate-400 hover:text-red-500 transition-colors">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="p-4 bg-slate-800/30">
+            <div class="relative">
+                <input type="text" id="search-input" placeholder="جستجوی نام یا آیدی پلیر..." 
+                    class="w-full bg-slate-900 border border-slate-700 text-white text-right pr-10 pl-4 py-2 rounded-lg focus:outline-none focus:border-blue-500 transition-colors placeholder-slate-500">
+                <i class="fas fa-search absolute right-3 top-3 text-slate-500"></i>
+            </div>
+        </div>
+
+        <!-- Player List -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-2" id="player-list">
+            <!-- Items injected by JS -->
+        </div>
+
+        <!-- Footer -->
+        <div class="p-4 border-t border-slate-700 bg-slate-800 text-center">
+            <p class="text-slate-500 text-xs dir-ltr">BODYCAM SYSTEM V2.0 // CONNECTED</p>
+        </div>
+    </div>
+
+    <!-- BODYCAM OVERLAY -->
+    <div id="bodycam-overlay" class="hidden absolute inset-0 w-full h-full pointer-events-none z-50">
+        <!-- Vignette & Scanlines -->
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.6)_100%)]"></div>
+        <div class="absolute inset-0 scanlines opacity-30"></div>
+        
+        <!-- Top Info -->
+        <div class="absolute top-8 right-8 flex flex-col items-end text-white font-mono text-shadow-md">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="text-red-500 font-bold rec-dot">● REC</span>
+                <span class="text-lg" id="cam-time">--:--:--</span>
+            </div>
+            <div class="text-sm text-gray-300" id="cam-date">----/--/--</div>
+        </div>
+
+        <div class="absolute top-8 left-8 flex flex-col items-start text-white font-mono">
+            <div class="bg-black/50 px-3 py-1 rounded border-l-4 border-blue-500 mb-2 backdrop-blur-sm">
+                <span class="text-xs text-gray-400 block">OFFICER / TARGET</span>
+                <span class="text-lg font-bold" id="cam-target-name">UNKNOWN</span>
+            </div>
+            <div class="flex gap-2 text-xs text-gray-400">
+                <span>ISO 800</span>
+                <span>F/2.8</span>
+                <span>1080P</span>
+            </div>
+        </div>
+
+        <!-- Battery -->
+        <div class="absolute bottom-8 right-8 text-white">
+            <i class="fas fa-battery-three-quarters text-2xl"></i>
+        </div>
+
+        <!-- Bottom Center Label -->
+        <div class="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+            <div class="text-white/50 text-xs tracking-[0.5em] font-mono">AXON BODY 3</div>
+        </div>
+
+        <!-- Exit Prompt -->
+        <div class="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-black/70 px-4 py-2 rounded text-white text-sm backdrop-blur">
+            برای خروج [BACKSPACE] را فشار دهید
+        </div>
+    </div>
+
+    <script>
+        // --- Real Data Holder ---
+        let currentPlayers = [];
+
+        const playerListContainer = document.getElementById('player-list');
+        const menuContainer = document.getElementById('bodycam-menu');
+        const overlayContainer = document.getElementById('bodycam-overlay');
+        const searchInput = document.getElementById('search-input');
+
+        // Render List
+        function renderPlayers(players) {
+            playerListContainer.innerHTML = '';
+            
+            if (!players || players.length === 0) {
+                playerListContainer.innerHTML = '<div class="text-center text-slate-500 mt-10">هیچ پلیری یافت نشد</div>';
+                return;
+            }
+
+            players.forEach(player => {
+                const el = document.createElement('div');
+                el.className = 'group flex items-center justify-between bg-slate-800/50 hover:bg-blue-600 hover:shadow-lg hover:shadow-blue-500/20 p-3 rounded-lg cursor-pointer transition-all duration-200 border border-transparent hover:border-blue-400';
+                el.onclick = () => startSpectate(player);
+                
+                el.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded bg-slate-700 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                            <span class="text-white font-bold text-sm">${player.id}</span>
+                        </div>
+                        <div class="text-right">
+                            <h3 class="text-white font-medium group-hover:text-white">${player.name}</h3>
+                            <span class="text-slate-400 text-xs group-hover:text-blue-100 flex items-center gap-1">
+                                <i class="fas fa-id-badge text-[10px]"></i> ${player.job || 'Player'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="w-8 h-8 rounded-full bg-slate-900/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <i class="fas fa-eye text-white text-xs"></i>
+                    </div>
+                `;
+                playerListContainer.appendChild(el);
+            });
+        }
+
+        // Search Functionality
+        searchInput.addEventListener('input', (e) => {
+            const val = e.target.value.toLowerCase();
+            const filtered = currentPlayers.filter(p => 
+                p.name.toLowerCase().includes(val) || 
+                p.id.toString().includes(val)
+            );
+            renderPlayers(filtered);
+        });
+
+        // Close Menu Action
+        function closeMenu() {
+            // Send NUI Callback to Lua
+            fetch(`https://${GetParentResourceName()}/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                body: JSON.stringify({})
+            }).catch(err => console.error('Error closing menu:', err));
+
+            menuContainer.style.display = 'none';
+        }
+
+        // Start Spectating Action
+        function startSpectate(player) {
+            // Send NUI Callback to Lua
+            fetch(`https://${GetParentResourceName()}/spectate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                body: JSON.stringify({ targetId: player.id })
+            }).catch(err => console.error('Error starting spectate:', err));
+            
+            // Hide Menu immediately (Lua will trigger overlay show, but good to be responsive)
+            menuContainer.style.display = 'none';
+        }
+
+        // Event Listener for FiveM Messages
+        window.addEventListener('message', function(event) {
+            const item = event.data;
+
+            if (item.type === "OPEN_MENU") {
+                menuContainer.style.display = 'flex';
+                // Reset search
+                searchInput.value = '';
+                // Update players list from Lua data
+                if(item.players) {
+                    currentPlayers = item.players;
+                    renderPlayers(currentPlayers);
+                }
+            }
+
+            if (item.type === "CLOSE_MENU") {
+                menuContainer.style.display = 'none';
+            }
+
+            if (item.type === "SHOW_OVERLAY") {
+                overlayContainer.classList.remove('hidden');
+                document.getElementById('cam-target-name').innerText = item.targetName ? item.targetName.toUpperCase() : "UNKNOWN";
+                
+                // Update Date once
+                const now = new Date();
+                document.getElementById('cam-date').innerText = now.toISOString().split('T')[0];
+            }
+
+            if (item.type === "HIDE_OVERLAY") {
+                overlayContainer.classList.add('hidden');
+            }
+        });
+
+        // Key Listener
+        document.addEventListener('keydown', (e) => {
+            // Backspace to stop spectating
+            if (e.key === 'Backspace' && !overlayContainer.classList.contains('hidden')) {
+                fetch(`https://${GetParentResourceName()}/stopSpectate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+                    body: JSON.stringify({})
+                });
+            }
+            // Escape to close menu
+            if (e.key === 'Escape') {
+                if(menuContainer.style.display !== 'none') {
+                    closeMenu();
+                }
+            }
+        });
+
+        // Update Clock Interval
+        setInterval(() => {
+            if(!overlayContainer.classList.contains('hidden')){
+                const now = new Date();
+                document.getElementById('cam-time').innerText = now.toLocaleTimeString('en-US', { hour12: false });
+            }
+        }, 1000);
+
+    </script>
+</body>
+</html>
